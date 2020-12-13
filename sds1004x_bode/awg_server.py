@@ -82,12 +82,12 @@ class AwgServer(object):
         Makes all required initializations and starts the server.
         """
         
-        print "Starting AWG server..."
-        print "Listening on %s" % (self.host)
-        print "RPCBIND on port %s" % (self.rpcbind_port)
-        print "VXI-11 on port %s" % (self.vxi11_port)
+        print("Starting AWG server...")
+        print("Listening on %s" % (self.host))
+        print("RPCBIND on port %s" % (self.rpcbind_port))
+        print("VXI-10 on port %s" % (self.vxi11_port))
         
-        print "Creating sockets..."
+        print("Creating sockets...")
         # Create RPCBIND socket
         self.rpcbind_socket = self.create_socket(self.host, self.rpcbind_port)
         # Create VXI-11 socket
@@ -110,10 +110,10 @@ class AwgServer(object):
         # Run the VXI-11 server
         while True:
             # VXI-11 requests are processed after receiving a valid RPCBIND request.
-            print "\nWaiting for connection request..."
+            print("\nWaiting for connection request...")
             res = self.process_rpcbind_request()
             if res != OK:
-                print "Incompatible RPCBIND request."
+                print("Incompatible RPCBIND request.")
                 continue
             self.process_lxi_requests()
         self.close_lxi_sockets()
@@ -127,14 +127,14 @@ class AwgServer(object):
         connection, address = self.rpcbind_socket.accept()
         rx_data = connection.recv(128)
         if len(rx_data) > 0:
-            print "\nIncoming connection from %s:%s." % (address[0], address[1])
+            print("\nIncoming connection from %s:%s." % (address[0], address[1]))
             # Validate the request.
             ## If the request is not GETPORT or does not come from VXI-11 Core (395183),
             ## we have nothing to do wit it
-            procedure = self.bytes_to_uint(rx_data[0x18:0x1c])
+            procedure = int.from_bytes(rx_data[0x18:0x1c], byteorder="big")
             if procedure != GET_PORT:
                 return NOT_GET_PORT_ERROR
-            program_id = self.bytes_to_uint(rx_data[0x2C:0x30])
+            program_id = int.from_bytes(rx_data[0x2C:0x30], byteorder="big")
             if program_id != VXI11_CORE_ID:
                 return NOT_VXI11_ERROR
             # Generate and send response
@@ -154,13 +154,13 @@ class AwgServer(object):
                 status, vxi11_procedure, scpi_command = self.parse_lxi_request(rx_buf)
                 
                 if status == NOT_VXI11_ERROR:
-                    print "Received VXI-11 request from an unknown source."
+                    print("Received VXI-11 request from an unknown source.")
                     break
                 elif status == UNKNOWN_COMMAND_ERROR:
-                    print "Unknown VXI-11 request received. Procedure id %s" % (vxi11_procedure)
+                    print("Unknown VXI-11 request received. Procedure id %s" % (vxi11_procedure))
                     break
                 
-                print "VXI-11 %s, SCPI command: %s" % (LXI_PROCEDURES[vxi11_procedure], scpi_command)
+                print("VXI-11 %s, SCPI command: %s" % (LXI_PROCEDURES[vxi11_procedure], scpi_command))
                 
                 # Process the received VXI-11 request
                 if vxi11_procedure == CREATE_LINK:
@@ -227,21 +227,21 @@ class AwgServer(object):
                 3. string containing SCPI command if it exists in the request."""
         # Validate source program id.
         ## If the request doesn't come from VXI-11 Core (395183), it is ignored.
-        program_id = self.bytes_to_uint(rx_data[0x10:0x14])
+        program_id = int.from_bytes(rx_data[0x10:0x14], byteorder="big")
         if program_id != VXI11_CORE_ID:
             return (NOT_VXI11_ERROR, None, None)
         
         # Procedure: CREATE_LINK (10), DESTROY_LINK (23), DEVICE_WRITE (11), DEVICE_READ (12)
-        vxi11_procedure = self.bytes_to_uint(rx_data[0x18:0x1c])
-        scpi_command = None
+        vxi11_procedure = int.from_bytes(rx_data[0x18:0x1c], byteorder="big")
+        scpi_command = b''
         status = OK
         
         # Process the remaining data according to the received VXI-11 request
         if vxi11_procedure == CREATE_LINK:
-            cmd_length = self.bytes_to_uint(rx_data[0x38:0x3C])
+            cmd_length = int.from_bytes(rx_data[0x38:0x3C], byteorder="big")
             scpi_command = rx_data[0x3C:0x3C+cmd_length]
         elif vxi11_procedure == DEVICE_WRITE:
-            cmd_length = self.bytes_to_uint(rx_data[0x3C:0x40])
+            cmd_length = int.from_bytes(rx_data[0x3C:0x40], byteorder="big")
             scpi_command = rx_data[0x40:0x40+cmd_length]            
         elif vxi11_procedure == DEVICE_READ:
             pass
@@ -249,9 +249,9 @@ class AwgServer(object):
             pass
         else:
             status = UNKNOWN_COMMAND_ERROR
-            print "Unknown VXI-11 command received. Code %s" % (vxi11_procedure)
+            print("Unknown VXI-11 command received. Code %s" % (vxi11_procedure))
         
-        return (status, vxi11_procedure, str(scpi_command).strip())
+        return (status, vxi11_procedure, scpi_command.decode("ascii").strip())
     
     def get_xid(self, rx_packet):
         """
@@ -281,7 +281,7 @@ class AwgServer(object):
         # 1... .... .... .... .... .... .... .... = Last Fragment: Yes
         size = size | 0x80000000
         # .000 0000 0000 0000 0000 0000 0001 1100 = Fragment Length: 28
-        res = self.uint_to_bytes(size)
+        res = size.to_bytes(4, byteorder='big')
         return res
 
     def generate_rpc_header(self, xid):
@@ -289,20 +289,20 @@ class AwgServer(object):
         Generates RPC header for replying to oscilloscope's requests.
         @param xid: XID from the request packet as bytes sequence.
         """ 
-        hdr = ""
+        hdr = b""
         # XID: 0xXXXXXXXX (4 bytes)
         hdr += xid
         # Message Type: Reply (1)
-        hdr += "\x00\x00\x00\x01"
+        hdr += b"\x00\x00\x00\x01"
         # Reply State: accepted (0)
-        hdr += "\x00\x00\x00\x00"
+        hdr += b"\x00\x00\x00\x00"
         # Verifier
         ## Flavor: AUTH_NULL (0)
-        hdr += "\x00\x00\x00\x00"
+        hdr += b"\x00\x00\x00\x00"
         ## Length: 0
-        hdr += "\x00\x00\x00\x00"
+        hdr += b"\x00\x00\x00\x00"
         # Accept State: RPC executed successfully (0)
-        hdr += "\x00\x00\x00\x00"
+        hdr += b"\x00\x00\x00\x00"
         return hdr
 
     # =========================================================================
@@ -311,60 +311,40 @@ class AwgServer(object):
 
     def generate_rpcbind_response(self):
         """Returns VXI-11 port number as response to RPCBIND request."""
-        resp = self.uint_to_bytes(self.vxi11_port)
+        resp = self.vxi11_port.to_bytes(4, byteorder='big')
         return resp
     
     def generate_lxi_create_link_response(self):
         """Generates reply to VXI-11 CREATE_LINK request.""" 
         # VXI-11 response
         ## Error Code: No Error (0)
-        resp = "\x00\x00\x00\x00"
+        resp = b"\x00\x00\x00\x00"
         ## Link ID: 0
-        resp += "\x00\x00\x00\x00"
+        resp += b"\x00\x00\x00\x00"
         ## Abort Port: 0
-        resp += "\x00\x00\x00\x00"
+        resp += b"\x00\x00\x00\x00"
         ## Maximum Receive Size: 8388608=0x00800000
         #resp += self.uint_to_bytes(8388608)
-        resp += "\x00\x80\x00\x00"
+        resp += b"\x00\x80\x00\x00"
         return resp
 
     def generate_lxi_idn_response(self, id_string):
         ## Error Code: No Error (0)
-        resp = "\x00\x00\x00\x00"
+        resp = b"\x00\x00\x00\x00"
         # Reason: 0x00000004 (END)
-        resp += "\x00\x00\x00\x04"
+        resp += b"\x00\x00\x00\x04"
         # Add the AWG id string
         id_length = len(id_string) + 3
-        resp += self.uint_to_bytes(id_length)
-        resp += id_string
+        resp += id_length.to_bytes(4, byteorder='big')
+        resp += id_string.encode('ascii')
         # The sequence ends with \n and two \0 termination bytes.
-        resp += "\x0A\x00\x00"
+        resp += b"\x0A\x00\x00"
         return resp
 
     # =========================================================================
     #   Helper functions
     # =========================================================================
     
-    def bytes_to_uint(self, bytes_seq):
-        """
-        Converts a sequence of 4 bytes to 32-bit integer. Byte 0 is MSB.
-        """
-        num = ord(bytes_seq[0])
-        num = num * 0x100 + ord(bytes_seq[1])
-        num = num * 0x100 + ord(bytes_seq[2])
-        num = num * 0x100 + ord(bytes_seq[3])
-        return num
-    
-    def uint_to_bytes(self, num):
-        """
-        Converts a 32-bit integer to a sequence of 4 bytes. Byte 0 is MSB.
-        """
-        byte3 = (num / 0x1000000) & 0xFF
-        byte2 = (num / 0x10000) & 0xFF
-        byte1 = (num / 0x100) & 0xFF
-        byte0 = num & 0xFF
-        bytes_seq = bytearray((byte3, byte2, byte1, byte0))
-        return bytes_seq
     
     def print_as_hex(self, buf):
         """
@@ -374,7 +354,7 @@ class AwgServer(object):
         buf_str = ""
         for b in buf:
             buf_str += "0x%X " % ord(b)
-        print buf_str
+        print(buf_str)
     
     def close_rpcbind_sockets(self):
         """

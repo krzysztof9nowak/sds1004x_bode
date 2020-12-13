@@ -8,9 +8,9 @@ Driver for BK Precision BK4075 AWG.
 
 import serial
 import time
-from base_awg import BaseAWG
-import constants
-from exceptions import UnknownChannelError
+from awgdrivers.base_awg import BaseAWG
+from . import constants
+from awgdrivers.exceptions import UnknownChannelError
 
 # Port settings
 BAUD_RATES = (2400, 4800, 9600, 19200)
@@ -220,4 +220,4 @@ class BK4075(BaseAWG):
             self.v_out_coeff = 0.5 * (self.r_load + R_IN) / self.r_load 
 
 if __name__ == '__main__':
-    print "This module shouldn't be run. Run awg_tests.py instead."
+    print("This module shouldn't be run. Run awg_tests.py instead.")
