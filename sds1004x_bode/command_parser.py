@@ -32,7 +32,6 @@ class CommandParser(object):
         
         If the command is a query to the AWG, it is ignored.
         """
-        print(F"Command parser: {line}")
         if line.endswith("?"):
             return
 
